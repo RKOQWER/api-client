@@ -34,3 +34,5 @@ Bad:
 i = i + 1
 
 4. Git commit message format — feat/bugfix/chore: <what changed from a functional point of view>. No implementation details. No file or function names. For bugs, state the root cause and the fix in functional terms only.
+
+5. Always the answer that I ask you should be short and crisp and crystal clear without any abstraction

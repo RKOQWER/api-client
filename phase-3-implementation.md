@@ -1,0 +1,27 @@
+## Goal
+Deliver the searchable registry and broaden adapter coverage; harden the SDK toward its pre-registry freeze.
+
+## Build
+- Hardened adapter SDK + manifest — the contract becomes permanent public API once the registry launches, so it is locked before any public registry
+  - *Using a new npm protocol library without re-implementing it, with user-controlled install/uninstall:* you cannot run an *arbitrary* npm package as an adapter with zero glue — the package implements a protocol but knows nothing of our `open/send/events/close` verbs or our manifest. Something must translate. The translator is a **thin wrapper** (often <100 lines) that imports the npm package, maps our verbs onto its API, and ships a manifest. Two important points: (1) for **HTTP-shaped** protocols no code is needed at all — a manifest-only Type A adapter (FR-407) suffices and the **user authors it themselves**; (2) for **binary/stateful** protocols a code wrapper is needed, but it is authored **once by anyone** (user, community, or us) and published to the registry — the user is never blocked on *us* specifically. From then on install/uninstall is pure on-demand, no app change.
+- Out-of-process runtime — covers every seed adapter; adapters run sandboxed with deny-by-default manifest permissions from day zero (FR-402)
+  - *What in-process WASM/WASI is and the pain it solves (later versions):* it runs an adapter's code *inside* our app process but in a secure WebAssembly sandbox, instead of as a separate OS process. v1.0 uses out-of-process adapters — safe (OS isolation + permission scoping) and language-agnostic, but heavier (process startup + IPC overhead). WASM later solves two pains: (1) **speed** — a lightweight adapter you call constantly is cheaper in-process than spawning a process each time; (2) **fast + safe untrusted community adapters** — a capability sandbox lets a stranger's adapter run in-process without reaching network/disk unless its manifest grants it.
+  - *Why deferred + the language catch:* safety is *already* delivered out-of-process from day zero, so WASM adds only speed — and it has a real catch. WASM is a compile target: **Rust and C compile to it cleanly, but TypeScript/JavaScript do not** (JS runs on an engine; it isn't a WASM guest). Since the most likely community adapter author writes TS/JS, a WASM-only path would lock them out. So WASM's natural future home is *our own Rust/C adapters that need speed*, not untrusted community code (the OS sandbox already handles that safely). Pulled earlier only if maintaining three OS-specific sandbox profiles (seccomp/landlock, Seatbelt, AppContainer) becomes a tarpit — WASM's single cross-platform sandbox would then be cheaper.
+- Conformance suite with both profiles — request/response and long-running-job tests that every adapter must pass, gating tier badges
+- MCP seed adapter — drives a real MCP server end to end
+- gRPC seed adapter — adds gRPC protocol coverage as a Type B (code-wrapper) adapter
+- MQTT seed adapter — adds MQTT protocol coverage as a Type B (code-wrapper) adapter
+- Form renderer — auto-builds the request editor UI straight from an adapter's manifest, so adapter authors don't write UI code
+  - *What it is / why it's needed / the pain it solves:* the manifest declares an adapter's fields in JSON Schema ("a `topic` string, a `QoS` dropdown 0/1/2, a `payload` box"); the renderer *draws the form automatically*. Pain solved, for two parties: (1) **adapter authors** otherwise would each hand-write React UI — a huge barrier; most wouldn't bother and the registry would stay empty. With auto-UI they ship only a manifest + logic and the UI appears for free — this is what makes a third-party ecosystem viable at all. (2) **end users** get a consistent, uniformly-validated editor across every adapter instead of a mishmash of hand-rolled UIs.
+- Version-0 registry (static, signed list) with search, install, and remove — writes to the `adapters/` folder inside the user's collection, reviewable in PRs, with no app release needed
+
+## Acceptance Criteria
+- A user can search the registry for a protocol (e.g. "gRPC"), install it, use it, and remove it - entirely on demand, with no app release
+  - *Selecting a specific version:* adapters are semver-versioned like npm/VS Code extensions. The registry lists every published version; the user installs latest, pins an exact version, or accepts a range, and the resolved version is committed in `adapters/` so a teammate who clones gets the identical one (reproducible, PR-reviewable).
+  - *How the search is "real-time / naturally updating":* the client carries no built-in adapter list — it asks the live registry on each search and shows what the registry holds *right now*, exactly like a new app appearing in the App Store without updating your phone's OS. In v0 the registry is a *static signed index* the client re-fetches on each search (publish → appears on next search); "signed" means cryptographically verified so no attacker can swap in a malicious adapter. A push/live-update index is a later refinement; re-fetch-on-search already feels live.
+- The MCP adapter drives a real MCP server from start to finish
+- Adapter conformance tests (both profiles) run automatically in CI on every pull request
+- A request form renders automatically from a manifest schema
+
+## Gate
+Search→install→remove works end to end; the full set of seed adapters passes conformance; the kernel still contains zero protocol-specific assumptions (re-verified, not re-established).
