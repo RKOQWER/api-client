@@ -1,0 +1,78 @@
+# ─── TypeScript / Node / Bun (core, kernel, CLI, UI — §7.2) ───
+node_modules/
+dist/
+build/
+out/
+*.tsbuildinfo
+.tsc-cache/
+coverage/
+.nyc_output/
+
+# Package manager artifacts (keep lockfiles committed)
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/install-state.gz
+.bun/
+bun-debug.log*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ─── Rust (WASI sandbox §7.2/FR-402.2, load engine §7.2/FR-202) ───
+# Keep Cargo.lock committed for the app; ignore build output.
+target/
+**/*.rs.bk
+*.pdb
+
+# ─── Tauri desktop shell (§7.2) ───
+src-tauri/target/
+src-tauri/gen/
+# WiX / bundler output
+src-tauri/WixTools/
+
+# ─── WASM / adapter build artifacts (FR-402, FR-405) ───
+*.wasm
+!**/fixtures/**/*.wasm
+adapters/**/target/
+adapters/**/dist/
+
+# ─── Secrets — never in VCS (Non-Negotiable #2, FR-101, FR-205) ───
+# Secrets live in the OS keychain; these are belt-and-suspenders.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+*.secret.*
+
+# ─── Local-first runtime state (not source; FR-203 snapshots, FR-200 monitors) ───
+# Sessions/snapshots are persisted locally; exclude unless a fixture.
+.leo/
+snapshots/
+!**/fixtures/**/snapshots/
+monitor-runs/
+*.session.local
+
+# ─── Test / tooling output ───
+playwright-report/
+test-results/
+.vitest/
+.cache/
+
+# ─── Editor / OS ───
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
