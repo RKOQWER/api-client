@@ -159,53 +159,143 @@ Priority scale: **P0** = table stakes, ship-gap; **P1** = differentiators; **P2*
 
 ## 4. Part-by-Part Implementation Roadmap
 
-Each phase has: **Goal → Build order → Acceptance Criteria (AC) → Gate**.
+The product is built in seven phases (Phase 0 through Phase 6), each roughly a few weeks long. Every phase describes four things:
+
+- **Goal** - what this phase is trying to achieve.
+- **Build** - the concrete pieces we construct.
+- **Acceptance Criteria (AC)** - the tests that prove the phase actually works.
+- **Gate** - the single bar we must clear before moving to the next phase.
 
 ### Phase 0 - Bootstrap (Week 1)
-- **Goal**: monorepo up, core symmetry proven.
-- **Build**: TS monorepo; packages `kernel-core`, `kernel-http`; local-first file store (JSON Schema validated); plain REST request + response inspector; secrets in OS keychain.
-- **AC**: send a request headlessly; validate a JSON schema; secrets never land in a collection file.
-- **Gate**: manual smoke pass + basic Playwright e2e green.
+
+*In plain terms: stand up the skeleton of the project and prove the most basic thing works - we can send one API request and get a response back, with the groundwork laid out cleanly.*
+
+- **Goal**: Get the project structure in place and prove the foundation is sound before adding features.
+- **Build**:
+  - A single TypeScript repository (a "monorepo") holding all our code packages.
+  - Two starting packages: `kernel-core` (the protocol-neutral engine) and `kernel-http` (the HTTP-specific part).
+  - A local file store that saves everything to plain files on disk and checks each file against a JSON Schema so bad data can't sneak in.
+  - A basic REST request feature plus a response inspector to view what comes back.
+  - Secret values (passwords, tokens) stored in the operating system's secure keychain, not in project files.
+- **AC**:
+  - We can send an API request with no user interface involved (headless).
+  - A file is correctly validated against its JSON Schema.
+  - No secret ever ends up written into a collection file.
+- **Gate**: A manual once-over passes, and a basic end-to-end browser test (Playwright) is green.
 
 ### Phase 1 - P0 completion (Weeks 2-4)
-- **Goal**: full table-stakes (FR-100..FR-107).
-- **Build**: BrowserRouter GraphQL/WS/SSE; auth suite; scripting + `bru`-style API; importers (Postman + OAS first - highest conversion); CLI runner with JUnit/JSON/TAP.
-- **AC**: import 3 Postman collections losslessly (assertions, variables, scripts); `forge run` exits non-zero on assertion failure in CI.
-- **Gate**: CI pipeline on a sample collection passes.
+
+*In plain terms: build everything a normal API client is expected to have, so we're at least on par with tools like Bruno and Postman. This is the "catch up to the basics" phase.*
+
+- **Goal**: Deliver the full set of table-stakes features (FR-100 through FR-107) - the things no API client can ship without.
+- **Build**:
+  - Support for more request types beyond REST: GraphQL, WebSocket (WS), and Server-Sent Events (SSE).
+  - A complete authentication suite (Bearer tokens, Basic auth, API keys, OAuth, AWS signing).
+  - A scripting system with a `bru`-style API, so users can run small JavaScript snippets before and after a request.
+  - Importers that bring in existing collections from other tools, starting with Postman and OpenAPI (OAS) because they convert the most users.
+  - A command-line runner that can execute collections in CI and output results as JUnit, JSON, or TAP.
+- **AC**:
+  - Import 3 Postman collections with nothing lost - assertions, variables, and scripts all survive.
+  - The CLI runner (`forge run`) exits with a failure code when an assertion fails inside CI.
+- **Gate**: A CI pipeline running against a sample collection passes end to end.
 
 ### Phase 2 - P1 differentiators (Weeks 5-8)
-- **Goal**: local monitors + drift engine + micro load testing (FR-200..FR-205).
-- **Build**: scheduler (in-app cron + CI trigger); latency percentile budgets + alerting; OAS response validator + coverage map + drift-as-block gate in CI; ramping-QPS runner; snapshots + visual diff UI; findings-as-tests promotion.
-- **AC**: scheduled run produces alert on latency budget breach; drift report blocks merge on modified endpoint; load test produces p50/p95/p99; snapshot diff shows field-level drift.
-- **Gate**: demo of "change the API without changing the spec → CI blocks merge".
+
+*In plain terms: build the features that actually make us different - automatic checks that catch when an API quietly changes or slows down, run on a schedule and able to block a bad change from merging. This is our real competitive edge.*
+
+- **Goal**: Ship the local-first differentiators (FR-200 through FR-205): scheduled monitors, the contract-drift engine, and lightweight load testing.
+- **Build**:
+  - A scheduler that can run collections automatically on a timer (in-app) or on demand from CI.
+  - Latency budgets (p50/p95/p99 speed targets) with alerts when an API gets too slow.
+  - A validator that compares every response against the API's OpenAPI spec, maps which endpoints were tested, and - crucially - can **block a code merge** when the API drifts away from its spec.
+  - A load-test runner that ramps up request volume (QPS) to measure performance.
+  - Response snapshots plus a visual diff view, so you can see exactly what changed between runs.
+  - One-click promotion of any "finding" into a permanent test.
+- **AC**:
+  - A scheduled run fires an alert when a latency budget is breached.
+  - A drift report blocks a merge when an endpoint was changed without updating its spec.
+  - A load test produces real p50/p95/p99 numbers.
+  - A snapshot diff highlights a changed field.
+- **Gate**: A live demo of the headline story - *change the API without changing its spec, and watch CI block the merge.*
 
 ### Phase 3 - Adapter kernel v0 (Weeks 9-14)
-- **Goal**: session kernel is protocol-agnostic; first adapters ship (FR-400..FR-406).
-- **Build**: extract adapter SDK (TS types + manifest JSON Schema, 5-7 ops); out-of-process runtime (stdio/HTTP); WASI runtime v0; conformance suite; 3 seed adapters (MCP, gRPC, MQTT); manifest-driven auto-UI; registry v0 (static signed list); `adapters/` folder in collections.
-- **AC**: MCP adapter drives real MCP server end-to-end; adapter conformance runs in CI per PR; form auto-renders from manifest schema; adapters install without app release.
-- **Gate**: 3 conformance-passing adapters + zero HTTP assumptions in kernel types.
+
+*In plain terms: make the engine protocol-agnostic. Instead of hard-coding every protocol, the core stays neutral and new protocols plug in as "adapters" - like drivers. This is the architectural bet that lets the product grow without us rewriting the core every time.*
+
+- **Goal**: Make the core engine independent of any single protocol, and ship the first working adapters (FR-400 through FR-406).
+- **Build**:
+  - A clean adapter SDK: a small set of 5-7 operations defined as TypeScript types plus a JSON Schema manifest.
+  - Two ways to run an adapter: **out-of-process** (any language, talking over stdio/HTTP, like the Language Server Protocol) and **in-process WASM** (a sandboxed WASI runtime) - see Section 7 for the language choices.
+  - A conformance suite: a standard set of tests every adapter must pass.
+  - Three starter adapters we author ourselves: MCP, gRPC, and MQTT.
+  - A form renderer that auto-builds the request editor UI straight from an adapter's manifest, so adapter authors don't write UI code.
+  - A version-0 registry (a static, signed list) and an `adapters/` folder that lives inside the user's collection.
+- **AC**:
+  - The MCP adapter drives a real MCP server from start to finish.
+  - Adapter conformance tests run automatically in CI on every pull request.
+  - A request form renders automatically from a manifest schema.
+  - Adapters can be installed without shipping a new version of the app.
+- **Gate**: Three adapters all pass conformance, and the core kernel contains zero HTTP-specific assumptions.
 
 ### Phase 4 - Agent-native surface (Weeks 15-18)
-- **Goal**: agents are first-class users (FR-300..FR-303).
-- **Build**: built-in MCP server (list/run/generate/repair tools + security tool hooks); ACP agent chat; drift triage agent; A2A adapter (agent-card import) as a request type.
-- **AC**: Claude Code lists our MCP tools and runs a collection unprompted; drift patch suggested via ACP accepted in a PR.
-- **Gate**: end-to-end "the commit adds a drift check that an agent authored via ACP".
+
+*In plain terms: make AI coding agents (like Claude Code or Cursor) first-class users of the tool. They can list and run collections, and when the API drifts, an agent can propose the fix for a human to approve.*
+
+- **Goal**: Treat AI agents as first-class users of the client (FR-300 through FR-303).
+- **Build**:
+  - A built-in MCP server exposing tools agents can call (list, run, generate, repair) plus hooks into the security tools.
+  - An in-app agent chat built on the Agent Client Protocol (ACP).
+  - A drift-triage agent that reviews contract drift and suggests patches.
+  - An A2A adapter that imports agent cards as a request type.
+- **AC**:
+  - Claude Code can discover our MCP tools and run a collection on its own, without being hand-held.
+  - A drift-fix patch suggested through ACP is accepted into a pull request.
+- **Gate**: A full end-to-end flow where a commit adds a drift check that an agent authored via ACP.
 
 ### Phase 5 - Security adapter (Weeks 19-24)
-- **Goal**: inbuilt pentest (FR-500..FR-504).
-- **Build**: authorization gate + scope manifests; Nuclei out-of-process container adapter; template packs (API-focused, OWASP API Top 10); verified-exploit agent loop (Strix-style) in container; finding → collection test conversion; `run_security_scan` MCP tool; fix-PR generator.
-- **AC**: nuclei scan of a deliberately-vulnerable sample API finds seeded vulns with zero false positives in reproducible re-runs; authorization gate refuses unattested targets; finding converts to a regression test.
-- **Gate**: false-finding rate < X on bug-bounty-style sample suite; container escape audit passes.
+
+*In plain terms: build in penetration testing - automated security scanning of APIs - but safely. Scans run inside a locked-down container, only with explicit permission, and only report vulnerabilities that were actually proven, not guessed.*
+
+- **Goal**: Add built-in penetration testing (FR-500 through FR-504).
+- **Build**:
+  - An authorization gate plus scope manifests that force the user to explicitly declare what may be scanned.
+  - The Nuclei scanner running as an out-of-process adapter inside a container (never on the user's own machine).
+  - Template packs focused on APIs and the OWASP API Security Top 10.
+  - A verified-exploit agent loop (Strix-style) that runs only inside the container: recon, exploit, then verify.
+  - One-click conversion of a vulnerability finding into a regression test.
+  - A `run_security_scan` tool exposed to coding agents, and a generator that drafts fix pull requests.
+- **AC**:
+  - A Nuclei scan of a deliberately vulnerable sample API finds the planted vulnerabilities with zero false positives across repeated runs.
+  - The authorization gate refuses any target that wasn't explicitly attested.
+  - A finding converts cleanly into a regression test.
+- **Gate**: The false-finding rate stays under the agreed threshold on a bug-bounty-style sample suite, and a container-escape audit passes.
 
 ### Phase 6 - LLM jailbreak adapter (Weeks 25-30)
-- **Goal**: adversarial robustness on the client (FR-600..FR-608).
-- **Build**: target adapter config (OpenAI-compatible / Responses / custom); vector library v1 (prompt injection, jailbreak strategies, PII, system-prompt leakage, output handling, excessive Agency, reputation probes); strategy composition framework (converters/probes/orchestrators/scorers, PyRIT-shaped); local-first scored + plain-text replay; finding = proof capsule; safety-regression rail (a passing defense record becomes a monitor check); evil-MCP scanning v0; reporting mapped to OWASP LLM Top 10 2025/2026.
-- **AC**: red-team run against a deliberately-weak sample LLM app produces verified findings with replayable capsules; humans approve via ACP; safety-regression rail triggers on a deliberately-degraded guardrail config; totality of probes runs under budget and rate caps with zero external network calls by default.
-- **Gate**: report generation + diffing between two consecutive red-team cycles; probes themselves rate-limit-safe; zero prompt leakage in session timeline logs.
 
-### Post-1.0 (explicitly deferred, do not build now)
-- A2A/x402 implementations beyond request/types.
-- Own mock-server cloud. Own LLM. Bruno-style proprietary file format. Postman-style collab cloud. IDE plugins. Mobile clients.
+*In plain terms: test AI-powered APIs for safety - trying to trick the model into misbehaving (jailbreaks, prompt injection, leaking data). When the app resists an attack, we lock that in as a check so a future change can't quietly make it vulnerable again.*
+
+- **Goal**: Add adversarial robustness testing for LLM-backed APIs (FR-600 through FR-608).
+- **Build**:
+  - Target configuration for LLM endpoints: OpenAI-compatible, Responses API, or a custom adapter template.
+  - A version-1 attack library: prompt injection, jailbreak strategies, PII extraction, system-prompt leakage, bad output handling, excessive agency, and reputation probes.
+  - A composition framework shaped after PyRIT - converters, probes, orchestrators, and scorers - for building attacks.
+  - Local-first scoring and plain-text replay of every attack.
+  - Each successful attack saved as a replayable "proof capsule."
+  - A safety-regression rail: when the app successfully resists an attack, that success becomes a monitored check that must keep passing.
+  - A first version of evil-MCP scanning, plus reporting mapped to the OWASP LLM Top 10 (2025/2026).
+- **AC**:
+  - A red-team run against a deliberately weak sample LLM app produces verified findings with replayable capsules.
+  - Humans approve findings through ACP.
+  - The safety-regression rail triggers when a guardrail is deliberately weakened.
+  - All probes run within budget and rate caps, making zero external network calls by default.
+- **Gate**: Reports generate and can be diffed between two red-team cycles, the probes themselves stay within rate limits, and no prompt text leaks into the session timeline logs.
+
+### Post-1.0 (explicitly deferred - do not build now)
+
+These are intentionally out of scope for version 1.0:
+
+- A2A/x402 implementations beyond request types.
+- Our own mock-server cloud, our own LLM, a Bruno-style proprietary file format, a Postman-style collaboration cloud, IDE plugins, and mobile clients.
 
 ---
 
